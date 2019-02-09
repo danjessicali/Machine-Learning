@@ -1,0 +1,110 @@
+# import package
+import pandas as pd
+import scipy.io as sio
+import random
+import numpy as np
+import matplotlib.pyplot as plt
+import scipy.linalg as slin
+from numpy.linalg import inv
+# load data
+dataset = sio.loadmat(data in matlab version)
+data_train_X = dataset['data_train_X']
+data_train_y = dataset['data_train_y'][0]
+data_test_X = dataset['data_test_X']
+data_test_y = dataset['data_test_y'][0]
+
+#create training set and testing set
+data_train = [data_train_X,data_train_y]
+data_test = [data_test_X,data_test_y]
+# create lambd sequence
+lambd_seq = np.linspace(0.02,1.5,50)
+
+# create functions
+
+def shuffle_data(data):
+    np.random.seed(123)
+    data_shf = np.random.shuffle(data)
+    return data_shf
+
+def split_data_helper(data, num_folds, fold):
+    length = len(data)
+    length_range = int(length/num_folds)
+    data_fold = data[length_range*(fold-1):length_range*fold]
+    data_rest = np.concatenate((data[0:length_range*(fold-1)], data[length_range*fold:]), axis=0)
+                   
+    return data_fold, data_rest
+
+def split_data(data,num_folds,fold):
+    x = data[0]
+    y = data[1]
+    x_data =  split_data_helper(x,num_folds,fold)
+    y_data =  split_data_helper(y,num_folds,fold)
+    data_fold = [x_data[0],y_data[0]]
+    data_rest = [x_data[1],y_data[1]]
+    return data_fold, data_rest
+
+
+def train_model(data, lambd):
+    x = data[0]
+    y = data[1]
+    xt = np.transpose(x)
+    yt = np.transpose(y)
+    # step by step
+    xtx = np.matmul(xt, x)
+    l = lambd * np.identity(400)
+
+    temp = xtx +l
+    xty = np.matmul(xt,y)
+    model = np.linalg.solve(temp,xty)
+    return model
+
+
+def predict(data, model):
+    x = data[0]
+    prediction = np.matmul(x,model)
+    return prediction
+
+    
+def loss(data, model):
+    x = data[0]
+    y = data[1]
+    prediction = predict(data, model)
+    error = y - prediction
+    norm = np.linalg.norm(error)
+    error = norm**2/len(x)
+    return error
+
+def cross_validation(data, num_folds, lambd_seq):
+    shuffle_data(data[0])
+    shuffle_data(data[1])
+    current_data = [data[0],data[1]]
+    cv_error = []
+    for i in range(0,len(lambd_seq)):
+        lambd = lambd_seq[i]
+        cv_loss_lmd = 0
+        for fold in range(0,num_folds):           
+            val_cv, train_cv = split_data(current_data, num_folds, fold+1)
+            model = train_model(train_cv, lambd)
+            cv_loss_lmd += loss(val_cv, model)
+        cv_error.append(cv_loss_lmd / num_folds)
+    return cv_error    
+
+def train_error_helper(data,lambd_seq):
+    t_error = []
+    for i in range(0,len(lambd_seq)):
+        lambd = lambd_seq[i]
+        model = train_model(data, lambd)
+        error = loss(data, model)
+        t_error.append(error)
+    return t_error
+
+def test_error_helper(data1,data2,lambd_seq):
+    t_error = []
+    for i in range(0,len(lambd_seq)):
+        lambd = lambd_seq[i]
+        model = train_model(data2, lambd)
+        error = loss(data1, model)
+        t_error.append(error)
+    return t_error    
+
+   
