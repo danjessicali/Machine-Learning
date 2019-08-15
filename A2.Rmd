@@ -1,0 +1,464 @@
+---
+title: "STA414A2"
+author: "Dan Li"
+date: "3/17/2019"
+output:
+  html_document:
+    df_print: paged
+  pdf_document:
+    latex_engine: xelatex
+---
+
+Load the data and library
+```{r}
+load_mnist <- function() {
+  load_image_file <- function(filename) {
+    ret = list()
+    f = file(filename,'rb')
+    readBin(f,'integer',n=1,size=4,endian='big')
+    ret$n = readBin(f,'integer',n=1,size=4,endian='big')
+    nrow = readBin(f,'integer',n=1,size=4,endian='big')
+    ncol = readBin(f,'integer',n=1,size=4,endian='big')
+    x = readBin(f,'integer',n=ret$n*nrow*ncol,size=1,signed=F)
+    ret$x = matrix(x, ncol=nrow*ncol, byrow=T)
+    close(f)
+    ret
+  }
+  load_label_file <- function(filename) {
+    f = file(filename,'rb')
+    readBin(f,'integer',n=1,size=4,endian='big')
+    n = readBin(f,'integer',n=1,size=4,endian='big')
+    y = readBin(f,'integer',n=n,size=1,signed=F)
+    close(f)
+    y
+  }
+  train <<- load_image_file('/Users/lidan/Desktop/414a2/train-images-idx3-ubyte')
+  test <<- load_image_file('/Users/lidan/Desktop/414a2/t10k-images-idx3-ubyte')
+  
+  train$y <<- load_label_file('/Users/lidan/Desktop/414a2/train-labels-idx1-ubyte')
+  test$y <<- load_label_file('/Users/lidan/Desktop/414a2/t10k-labels-idx1-ubyte')  
+}
+
+show_digit <- function(arr784, col=gray(12:1/12), ...) {
+  image(matrix(arr784, nrow=28)[,28:1], col=col, ...)
+}
+load_mnist()
+#library(dplyr)
+```
+
+Get the first 10000 train data and 10000 test data
+```{r}
+train_x <- train$x[1:10000,]
+train_y <-head(train$y, 10000)
+test_x <-test$x[1:10000,]
+```
+
+Binarize function
+```{r}
+train_x_new <- ifelse(train_x >0.5, 1, 0)
+test_x <-ifelse(test_x >0.5, 1, 0)
+```
+
+Q1
+c)Fit θ to the training set using the MAP estimator. Plot θ as 10 separate greyscale images,
+one for each class.
+
+$\theta$ hat is ($\sum$Xi+1)/(d+2). To divide train x into 10 separate class, is to get ten [1000*784] matrixes. To get the ten class, since there the value inside train_y are 0~9, we use these to splite the train_x.
+```{r}
+# map estimate of theta
+theta_hat = matrix(0,nrow=10,ncol=784)
+result = matrix(0,nrow=10,ncol=784)
+theta_hat_cal <- function(x,y) {
+  for (i in(0:9)){
+    #print(i)
+    d = which(y == i)
+    current_class = x[d,]
+    for(j in (1:784)){
+      result[(i+1),j] = (sum(current_class[,j])+1)/(nrow(current_class) +2)
+    }
+  }
+  result
+}
+theta_hat = theta_hat_cal(train_x_new,train_y)
+# splite train data
+for (i in (1:10)){
+  show_digit(theta_hat[i,])
+}
+```
+
+
+e)
+Given parameters fit to the training set, and πc = 1/10 , report both the average log-likelihood
+per datapoint, 1/N Σlog p(ci|xi, θ, π) and the accuracy on both the training and test set. The
+accuracy is defined as the fraction of examples where the true class t = argmaxc p(c|x, θ, π).
+
+Answer: From the d) we get the log p(c|x,$\theta$,$\pi$) is log(($\pi$ + p(x|c,$\theta$))/($\sum$($\pi$ +p(x|c,$\theta$))). The function returns the average loglikihood is around -3. and the accuracy for train and test are around 0.8.
+
+```{r}
+average_logliki <-function(x,y,theta){
+  total = 0
+  result = 0
+  for (i in (1:10000)){
+    predi = sum(x[i]*log(theta) +(1-x[i])*log(1-theta)) +log(0.1)
+    deno = logsum(predi)
+    likeli = predi - deno
+    maxi = max(likeli)
+    current = maxi[i]
+    current_liki = likelihood[current]
+    total = total + current_liki
+    if (current == maxi){
+      result = result +1
+      average_liki = total/10000
+    }
+  }
+  accuracy = result /10000
+  average_liki
+  accuracy
+}
+```
+
+
+Q2
+c)Using the parameters fit in question 1, produce random image samples from the model. That
+is, randomly sample and plot 10 binary images from the marginal distribution p(x|θ,π).
+Hint: first sample c
+```{r}
+# random sample c
+V <- rep(0:9, each=1)
+sample = sample(V)
+
+image_x = matrix(0,nrow=10,ncol=784)
+
+for(i in (1:10)){
+  x_new=c()
+  for(j in (1:784)){
+    theta_new = theta_hat[(sample[i]+1),j]
+    x_new=c(x_new,rbinom(1,1,theta_new))
+ }
+ image_x[i,]=x_new
+}
+#plot 10 binary image
+for(i in (1:10)){
+ show_digit(image_x[i,])
+}
+```
+
+e)For 20 images from the training set, plot the top half the image concatenated with the
+marginal distribution over each pixel in the bottom half. i.e. the bottom half of the image
+should use grayscale to represent the marginal probability of each pixel being on.
+```{r}
+# get the 20 image
+sample = sample(1:10000,20)
+train_y_q2e = train_y[sample]
+train_x_q2e = train_x_new[sample,]
+top_x = train_x_q2e[,1:392]
+bottom_x = matrix(0,nrow=20,ncol=392)
+
+prob <-function(x,theta){
+  result = c()
+  for (i in (1:10)){
+    temp = x*log(theta[i,]) +(1-x)*log(1-theta[i,])
+    result = c(result,sum(temp))
+  }
+  mini = min(result)
+  result = result - mini
+}
+top_theta = theta_hat[,1:392]
+current = matrix(0,nrow=20,ncol=10000)
+for (i in (1:20)){
+  probi = prob(top_x[1,],top_theta)
+  current[1,]=sample(0:9,10000,TRUE,exp(probi))
+}
+
+for (i in(1:20)){
+  result = rep(0,392)
+  for (j in (1:10000)){
+    temp = rbinom(392,1,theta_hat[(current[i,j]+1),][393:784])
+    result = result + temp
+  }
+  bottom_x[i,] = result/10000
+}
+
+for (i in (1:10)){
+  show_digit(c(top_x[i,],bottom_x[i,]))
+}
+
+```
+
+
+Q3c)
+```{r}
+# the gradient from b
+gradient=function(w,x,y){
+  grad=matrix(0,nrow=1,ncol=784)
+  logsum=c()
+  for(i in (1:10)){
+    temp=sum(w[i,]*x)
+    logsum=c(logsum,temp)
+    }
+  maxi=max(logsum)
+  bottom = log(sum(exp(logsum-maxi))) + maxi
+  grad=x*(1-exp((sum(w[y,]*x))-bottom))
+  grad
+}
+
+w=matrix(0,nrow=10,ncol=784)
+for(i in (1:10)){
+ for(j in (1:10000)){
+   y=train_y[j]+1
+   g=gradient(w,train_x_new[j,],y)
+   alpha=0.01/i
+   t = g*alpha
+   w[y,]=w[y,]+t
+ }
+}
+
+for(i in (1:10)){
+ show_digit(w[i,])
+}
+```
+d)
+The logistic is better than Naive Bayes model. This is has a higher average logliki (-0.6) and better accuracy (0.9).
+
+
+Q4.
+a)
+```{r}
+library(mvtnorm)
+mean1 <- c(0.1,0.1)
+mean2 <- c(6.0,0.1)
+sigma <- matrix(c(10,7,7,10),nrow=2,ncol=2)
+c1 <- rmvnorm(200,mean1,sigma)
+c2 <- rmvnorm(200,mean2,sigma)
+N <- rbind(c1,c2)
+plot(N[,1],N[,2],col="Violet")
+points(c1[,1], c1[,2], col = "Cornflower Blue")
+```
+
+
+b)
+```{r}
+mu1 <- c(0.0,0.0)
+mu2 <- c(1.0,1.0)
+sigma <- matrix(c(1,0,0,1),nrow=2,ncol=2)
+npi <- 1/2
+
+normal_density<-function(x,mu1,mu2,sigma1,sigma2,pi1,pi2){
+  d <- drop(pi1*(1/(2*pi)*det(sigma1)^(-1/2)*
+                   exp((-1/2)*crossprod((x-mu1),solve(sigma1))%*%(x-mu1)))
+                  +pi2*(1/(2*pi)*det(sigma2)^(-1/2)*
+                    exp((-1/2)*crossprod((x-mu2),solve(sigma2))%*%(x-mu2))))
+  d
+  
+}
+
+em_e_step <-function(x,mu1,mu2,sigma1,sigma2,pi1,pi2,k){
+  mu = mu2
+  sigma <- sigma2
+  npi <- pi2
+  if (k==1){
+    mu = mu1
+    sigma <- sigma1
+    npi <- pi1
+  }
+  drop(npi*((2*pi)^(-1)*det(sigma)^(-1/2)*
+              exp(-1/2*crossprod((x-mu),solve(sigma))%*%(x-mu)))/
+              normal_density(x,mu1,mu2,sigma1,sigma2,pi1,pi2))
+}
+
+log_likelihood<-function(c,mu1,mu2,sigma1,sigma2,pi1,pi2){
+  ll <- 0
+  for (i in 1:400){
+    ll <- ll + log(normal_density(N[i,],mu1,mu2,sigma1,sigma2,pi1,pi2))
+  }
+  ll
+}
+
+em_m_step<-function(c,mu1,mu2,sigma1,sigma2,pi1,pi2,iter,loglike){
+  ll1 <- log_likelihood(N,mu1,mu2,sigma1,sigma2,pi1,pi2)
+  nmu1 <- c(0,0)
+  nsigma1 <- matrix(c(0,0,0,0),nrow=2,ncol=2)
+  nmu2 <- c(0,0)
+  nsigma2 <- matrix(c(0,0,0,0),nrow=2,ncol=2)
+  npi1 <- 0
+  npi2 <- 0
+  n1 <- 0
+  n2 <- 0
+  for (i in 1:400){
+    gm1 <- em_e_step(N[i,],mu1,mu2,sigma1,sigma2,pi1,pi2,1)
+    gm2 <- em_e_step(N[i,],mu1,mu2,sigma1,sigma2,pi1,pi2,2)
+    n1 <- n1 + gm1
+    n2 <- n2 + gm2
+    nmu1[1] <- nmu1[1] + gm1*N[i,1]
+    nmu1[2] <- nmu1[2] + gm1*N[i,2]
+    nmu2[1] <- nmu2[1] + gm2*N[i,1]
+    nmu2[2] <- nmu2[2] + gm2*N[i,2]
+
+  }
+  nmu1 <- nmu1/n1
+  nmu2 <- nmu2/n2
+  for(i in 1:400){
+      temp1 <- em_e_step(N[i,],mu1,mu2,sigma1,sigma2,pi1,pi2,1)
+      temp2 <- em_e_step(N[i,],mu1,mu2,sigma1,sigma2,pi1,pi2,2)
+      nsigma1[1] <- nsigma1[1] + temp1*(N[i,1]-nmu1[1])^2
+      nsigma1[2] <- nsigma1[2] + temp1*(N[i,2]-nmu1[2])*(N[i,1]-nmu1[1])
+      nsigma1[3] <- nsigma1[3] + temp1*(N[i,2]-nmu1[2])*(N[i,1]-nmu1[1])
+      nsigma1[4] <- nsigma1[1] + temp1*(N[i,2]-nmu1[2])^2
+      nsigma2[1] <- nsigma2[1] + temp2*(N[i,1]-nmu2[1])^2
+      nsigma2[4] <- nsigma2[4] + temp2*(N[i,2]-nmu2[2])^2
+      nsigma2[2] <- nsigma2[4] + temp2*(N[i,2]-nmu2[2])*(N[i,1]-nmu2[1])
+      nsigma2[3] <- nsigma2[4] + temp2*(N[i,2]-nmu2[2])*(N[i,1]-nmu2[1])
+  }
+  nsigma1 <- nsigma1/n1
+  nsigma2 <- nsigma2/n2
+  npi1<-n1/400
+  npi2<-n2/400
+  ll2 <- log_likelihood(N,nmu1,nmu2,nsigma1,nsigma2,npi1,npi2)
+  if (ll2 >= ll1){
+    iter <- iter +1
+    loglike <- append(loglike,ll1)
+    em_m_step(N,nmu1,nmu2,nsigma1,nsigma2,npi1,npi2,iter,loglike)
+  }else{
+    cl1 <- c()
+    for (i in 1:400){
+      r1 <- em_e_step(N[i,],mu1,mu2,sigma1,sigma2,pi1,pi2,1)
+      r2 <- em_e_step(N[i,],mu1,mu2,sigma1,sigma2,pi1,pi2,2)
+      if(r2<=r1){
+        cl1 <- rbind(cl1, N[i,])
+      }
+    }
+    rate <- 0
+    
+    for (i in length(cl1[,1])){
+      for (j in 1:200){
+        if (cl1[i,1]==c1[j,1]&cl1[i,2]==c1[j,2]){
+        rate = rate +1
+        }
+      }
+      
+    }
+    print("misclassification error is")
+    print(abs(200-rate)/400)
+    plot(N[,1],N[,2],col="Cornflower Blue",main = "k-means clustering",xlab="x",ylab="y")
+    points(cl1[,1],cl1[,2],col="Violet")
+    plot(1:iter,loglike)
+  }
+}
+em_m_step(N,mu1,mu2,sigma,sigma,npi,npi,0,c())
+```
+
+c)
+
+```{r}
+mu1 <- c(0.0,0.0)
+mu2 <- c(1.0,1.0)
+sigma <- matrix(c(1,0,0,1),nrow=2,ncol=2)
+npi <- 1/2
+
+normal_density<-function(x,mu1,mu2,sigma1,sigma2,pi1,pi2){
+  d <- drop(pi1*(1/(2*pi)*det(sigma1)^(-1/2)*
+                   exp((-1/2)*crossprod((x-mu1),solve(sigma1))
+                       %*%(x-mu1)))
+            +pi2*(1/(2*pi)*det(sigma2)^(-1/2)*
+                    exp((-1/2)*crossprod((x-mu2),solve(sigma2))%*%(x-mu2))))
+  d
+  
+}
+
+em_e_step <-function(x,mu1,mu2,sigma1,sigma2,pi1,pi2,k){
+  mu = mu2
+  sigma <- sigma2
+  npi <- pi2
+  if (k==1){
+    mu = mu1
+    sigma <- sigma1
+    npi <- pi1
+  }
+  drop(npi*((2*pi)^(-1)*det(sigma)^(-1/2)*
+              exp(-1/2*crossprod((x-mu),solve(sigma))%*%(x-mu)))/
+         normal_density(x,mu1,mu2,sigma1,sigma2,pi1,pi2))
+}
+
+log_likelihood<-function(c,mu1,mu2,sigma1,sigma2,pi1,pi2){
+  ll <- 0
+  for (i in 1:400){
+    ll <- ll + log(normal_density(N[i,],mu1,mu2,sigma1,sigma2,pi1,pi2))
+  }
+  ll
+}
+
+em_m_step<-function(c,mu1,mu2,sigma1,sigma2,pi1,pi2,iter,loglike){
+  ll1 <- log_likelihood(N,mu1,mu2,sigma1,sigma2,pi1,pi2)
+  nmu1 <- c(0,0)
+  nsigma1 <- matrix(c(0,0,0,0),nrow=2,ncol=2)
+  nmu2 <- c(0,0)
+  nsigma2 <- matrix(c(0,0,0,0),nrow=2,ncol=2)
+  npi1 <- 0
+  npi2 <- 0
+  n1 <- 0
+  n2 <- 0
+  for (i in 1:400){
+    gm1 <- em_e_step(N[i,],mu1,mu2,sigma1,sigma2,pi1,pi2,1)
+    gm2 <- em_e_step(N[i,],mu1,mu2,sigma1,sigma2,pi1,pi2,2)
+    n1 <- n1 + gm1
+    n2 <- n2 + gm2
+    nmu1[1] <- nmu1[1] + gm1*N[i,1]
+    nmu1[2] <- nmu1[2] + gm1*N[i,2]
+    nmu2[1] <- nmu2[1] + gm2*N[i,1]
+    nmu2[2] <- nmu2[2] + gm2*N[i,2]
+
+  }
+  nmu1 <- nmu1/n1
+  nmu2 <- nmu2/n2
+  for(i in 1:400){
+     temp1 <- em_e_step(N[i,],mu1,mu2,sigma1,sigma2,pi1,pi2,1)
+     temp2 <- em_e_step(N[i,],mu1,mu2,sigma1,sigma2,pi1,pi2,2)
+     nsigma1[1] <- nsigma1[1] + temp1*(N[i,1]-nmu1[1])^2
+     nsigma1[2] <- nsigma1[2] + temp1*(N[i,2]-nmu1[2])*(N[i,1]-nmu1[1])
+     nsigma1[3] <- nsigma1[3] + temp1*(N[i,2]-nmu1[2])*(N[i,1]-nmu1[1])
+     nsigma1[4] <- nsigma1[1] + temp1*(N[i,2]-nmu1[2])^2
+     nsigma2[1] <- nsigma2[1] + temp2*(N[i,1]-nmu2[1])^2
+     nsigma2[4] <- nsigma2[4] + temp2*(N[i,2]-nmu2[2])^2
+     nsigma2[2] <- nsigma2[4] + temp2*(N[i,2]-nmu2[2])*(N[i,1]-nmu2[1])
+     nsigma2[3] <- nsigma2[4] + temp2*(N[i,2]-nmu2[2])*(N[i,1]-nmu2[1])
+  }
+  nsigma1 <- nsigma1/n1
+  nsigma2 <- nsigma2/n2
+  npi1<-n1/400
+  npi2<-n2/400
+  ll2 <- log_likelihood(N,nmu1,nmu2,nsigma1,nsigma2,npi1,npi2)
+  if (ll2 >= ll1){
+    iter <- iter +1
+    loglike <- append(loglike,ll1)
+    em_m_step(N,nmu1,nmu2,nsigma1,nsigma2,npi1,npi2,iter,loglike)
+  }else{
+    cl1 <- c()
+    for (i in 1:400){
+      r1 <- em_e_step(N[i,],mu1,mu2,sigma1,sigma2,pi1,pi2,1)
+      r2 <- em_e_step(N[i,],mu1,mu2,sigma1,sigma2,pi1,pi2,2)
+      if(r2<=r1){
+        cl1 <- rbind(cl1, N[i,])
+      }
+    }
+    rate <- 0
+    
+    for (i in length(cl1[,1])){
+      for (j in 1:200){
+        if (cl1[i,1]==c1[j,1]&cl1[i,2]==c1[j,2]){
+        rate = rate +1
+        }
+      }
+      
+    }
+    print("misclassification error is")
+    print(abs(200-rate)/400)
+    plot(N[,1],N[,2],col="Cornflower Blue",main = "EM clustering",xlab="x",ylab="y")
+    
+    points(cl1[,1],cl1[,2],col="Violet")
+    plot(1:iter,loglike)
+  }
+}
+em_m_step(N,mu1,mu2,sigma,sigma,npi,npi,0,c())
+```
+
+d) There are two clusters, the red cluster is more dispersal and the blue cluester is more concentrated. iterations is around 3.
