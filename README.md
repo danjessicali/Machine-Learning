@@ -1,3 +1,3 @@
 # STA414-MachineLearning
 
-# This is the course code for STA 414
+### This is the course code for STA 414
